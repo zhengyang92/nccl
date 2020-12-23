@@ -1,5 +1,5 @@
 /*************************************************************************
- * Copyright (c) 2015-2020, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2015-2020, NVIDIA CORPORATION. All rights reserved.
  *
  * See LICENSE.txt for license information
  ************************************************************************/
@@ -7,6 +7,88 @@
 #include "devcomm.h"
 #include "primitives.h"
 #include "collectives.h"
+#include <cassert>
+
+#if 1
+template<class FUNC, typename T, int UNROLL>
+class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T, UNROLL> {
+  public:
+    __device__ void run(struct ncclWorkElem* args) {
+      const int tid = threadIdx.x;
+      const int nthreads = args->nThreads-WARP_SIZE;
+      const int bid = args->coll.bid;
+      const int nChannels = args->coll.nChannels;
+      struct ncclDevComm* comm = args->comm;
+      struct ncclChannel* channel = comm->channels+blockIdx.x;
+      struct ncclRing* ring = &channel->ring;
+      const int stepSize = comm->buffSizes[NCCL_PROTO_SIMPLE] / (sizeof(T)*NCCL_STEPS);
+      const int chunkSize = stepSize * ALLGATHER_CHUNKSTEPS;
+      const int nranks = comm->nRanks;
+      const int blocksPerLink = nChannels/nranks;
+      //const ssize_t loopSize = nChannels*(ssize_t)chunkSize;
+      const ssize_t loopSize = chunkSize * blocksPerLink;//comm->buffSizes[NCCL_PROTO_SIMPLE] / sizeof(T);
+      const ssize_t size = args->coll.count;
+
+/*      int myNghr[] = { 
+      	0, 1, 2, 3,
+      	3, 0, 1, 2,
+       	2, 3, 0, 1,
+       	1, 2, 3, 0,
+       };*/
+
+      int conn[] = {
+	0, 1,
+	1, 0
+      };
+      
+      int myRank = ring->devUserRanks[0];
+
+      if(nranks != 2 || (nChannels % nranks) != 0) {
+	printf("this is bad\n");
+	return;
+      }
+      
+      // Compute pointers
+      const T * __restrict__ thisInput = (const T*)args->sendbuff;
+      T * __restrict__ thisOutput = (T*)args->recvbuff;
+
+      int myNghr = conn[myRank * nranks + (bid / blocksPerLink)];
+      if(myNghr == myRank) {
+	return;
+      }
+
+      ncclPrimitives<UNROLL, ALLGATHER_CHUNKSTEPS/ALLGATHER_SLICESTEPS, ALLGATHER_SLICESTEPS, T, 1, 1, 1, FUNC>
+	prims(tid, nthreads, &myNghr, &myNghr, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+
+      const int blockIdWithinALink = (bid % blocksPerLink);
+      for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
+        int realChunkSize = min(chunkSize, size-gridOffset);
+        ALIGN_SIZE(realChunkSize, nthreads*sizeof(uint64_t)/sizeof(T));
+        ssize_t chunkOffset = gridOffset + blockIdWithinALink * realChunkSize;// + bid*realChunkSize;
+	int nelem = min(realChunkSize, size-chunkOffset);
+
+	int rankDest = myRank;	
+	ssize_t offset = chunkOffset + rankDest * size; 
+
+        if (thisInput + chunkOffset == thisOutput + offset) { // In place
+          prims.directSend(thisInput+chunkOffset, offset, nelem);
+          //prims.send(thisInput+chunkOffset, nelem);
+        } else {
+          prims.directCopySend(thisInput+chunkOffset, thisOutput+offset, offset, nelem);
+          //prims.copySend(thisInput+chunkOffset, thisOutput+offset, nelem);
+        }
+
+	rankDest = myNghr;
+	offset = chunkOffset + rankDest * size;
+	prims.directRecv(thisOutput+offset, offset, nelem);
+	//prims.recv(thisOutput+offset, nelem);
+	
+      }
+      
+    }
+};
+
+#else
 
 template<class FUNC, typename T, int UNROLL>
 class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T, UNROLL> {
@@ -47,7 +129,8 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
         offset = chunkOffset + rankDest * size;
 
         if (thisInput + chunkOffset == thisOutput + offset) { // In place
-          prims.directSend(thisInput+chunkOffset, offset, nelem);
+	  //  prims.directSend(thisInput+chunkOffset, offset, nelem);
+	  prims.directSend(thisOutput + offset, offset, nelem); // 0 -x-> 1 -x-> 2
         } else {
           prims.directCopySend(thisInput+chunkOffset, thisOutput+offset, offset, nelem);
         }
@@ -69,6 +152,8 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       }
     }
 };
+
+#endif
 
 template<class FUNC, typename T, int UNROLL>
 class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_LL, FUNC, T, UNROLL> {

@@ -117,6 +117,13 @@ struct ncclRing {
   int* devUserRanks;
 };
 
+struct scklGraph {
+  int outDeg;
+  int inDeg;
+  int* out;
+  int* in;
+};
+
 
 #define NCCL_MAX_TREE_ARITY 3
 struct ncclTree {
@@ -178,7 +185,8 @@ struct ncclChannel {
       struct ncclRing ring;
       struct ncclTree tree;
       struct ncclTree collTree;
-
+      struct scklGraph sckl;
+      
       int id;
 
       // Communication structures

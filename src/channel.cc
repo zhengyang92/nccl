@@ -16,6 +16,10 @@ ncclResult_t initChannel(struct ncclComm* comm, int channelid) {
   NCCLCHECK(ncclCudaCalloc(&channel->ring.devUserRanks, comm->nRanks));
   NCCLCHECK(ncclCalloc(&channel->ring.userRanks, comm->nRanks));
 
+  // Initiating SCKL in and out, possibly the set is smaller
+  NCCLCHECK(ncclCalloc(&channel->sckl.in, comm->nRanks));
+  NCCLCHECK(ncclCalloc(&channel->sckl.out, comm->nRanks));
+    
   // Communication structures with peers.
   NCCLCHECK(ncclCudaCalloc(&channel->devPeers, comm->nRanks+1)); // The extra one rank is for collnet root (i.e. network)
   NCCLCHECK(ncclCalloc(&channel->peers, comm->nRanks+1));
@@ -38,6 +42,9 @@ ncclResult_t freeChannel(struct ncclChannel* channel, int nRanks) {
   free(channel->ring.userRanks);
   CUDACHECK(cudaFree(channel->ring.devUserRanks));
 
+  free(channel->sckl.in);
+  free(channel->sckl.out);
+  
   // Free transport proxy resources
   // Note: free all send resources first due to CollNet arrangement
   for (int r=0; r<nRanks+1; r++) {
