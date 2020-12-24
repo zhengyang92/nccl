@@ -571,14 +571,14 @@ ncclResult_t ncclTopoGetSystem(struct ncclComm* comm, struct ncclTopoSystem** sy
     NCCLCHECK(xmlInitAttrInt(netNode, "gdr", props.ptrSupport & NCCL_PTR_CUDA ? 1 : 0));
   }
 
-  // Remove XML branches which don't have a node with keep="1" (typically when importing a topology)
-  NCCLCHECK(ncclTopoTrimXml(xml));
 
   xmlTopoFile = getenv("NCCL_TOPO_DUMP_FILE");
   if (xmlTopoFile && comm->rank == ncclParamTopoDumpFileRank()) {
     INFO(NCCL_ENV, "NCCL_TOPO_DUMP_FILE set by environment to %s", xmlTopoFile);
     NCCLCHECK(ncclTopoDumpXmlToFile(xmlTopoFile, xml));
   }
+  // Remove XML branches which don't have a node with keep="1" (typically when importing a topology)
+  NCCLCHECK(ncclTopoTrimXml(xml));
 
   NCCLCHECK(ncclTopoGetSystemFromXml(xml, system));
   free(xml);

@@ -22,30 +22,213 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       struct ncclChannel* channel = comm->channels+blockIdx.x;
       struct ncclRing* ring = &channel->ring;
       const int stepSize = comm->buffSizes[NCCL_PROTO_SIMPLE] / (sizeof(T)*NCCL_STEPS);
-      const int chunkSize = stepSize * ALLGATHER_CHUNKSTEPS;
+      const int chunkSize = stepSize * 1;//ALLGATHER_CHUNKSTEPS;
       const int nranks = comm->nRanks;
       const int blocksPerLink = nChannels/nranks;
       //const ssize_t loopSize = nChannels*(ssize_t)chunkSize;
       const ssize_t loopSize = chunkSize * blocksPerLink;//comm->buffSizes[NCCL_PROTO_SIMPLE] / sizeof(T);
       const ssize_t size = args->coll.count;
 
-/*      int myNghr[] = { 
-      	0, 1, 2, 3,
-      	3, 0, 1, 2,
-       	2, 3, 0, 1,
-       	1, 2, 3, 0,
-       };*/
+      int myRank = ring->devUserRanks[0];
+      // Compute pointers
+      const T * __restrict__ thisInput = (const T*)args->sendbuff;
+      T * __restrict__ thisOutput = (T*)args->recvbuff;
+
+/*
+send 0 from 0 to 2 at time 0
+send 1 from 1 to 2 at time 0
+send 2 from 2 to 3 at time 0
+
+send 0 from 2 to 1 at time 1
+send 0 from 2 to 3 at time 1
+send 1 from 2 to 0 at time 1
+send 1 from 2 to 3 at time 1
+send 2 from 3 to 0 at time 1
+send 2 from 3 to 1 at time 1
+send 3 from 3 to 0 at time 1
+send 3 from 3 to 1 at time 1
+send 3 from 3 to 2 at time 1
+ */
+
+	// chunk 0:
+	// 0(0) -> 2(1) -> 1(2), 3(2)
+
+	// chunk 1:
+	// 1(0) -> 2(1) -> 0(2), 3(2)
+
+	// chunk 2:
+	// 2(0) -> 3(1) -> 0(2), 1(2)
+
+	// chunk 3:
+	// 3(1) -> 0(2), 1(2), 2(2)
+      if(nranks != 4 || (nChannels != nranks)) {
+      	printf("this is bad\n");
+      	return;
+      }
+      
+      int m1 = -1;
+	
+      if(myRank == 0) {
+	      switch (bid){
+		      case 0:
+						// chunk 0
+						{int dst0 = 2;
+						ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+										prims0(tid, nthreads, &m1, &dst0, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims0.directSend(thisInput, 0, size);}
+			      break;
+		      case 1:
+			      // chunk 1
+			      {int src1 = 2;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims1(tid, nthreads, &src1, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims1.directRecv(thisOutput + 1 * size, 1 * size, size);}
+			      break;
+		      case 2:
+			      // chunk 2 
+			      {int src2 = 3;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims2(tid, nthreads, &src2, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims2.directRecv(thisOutput + 2 * size, 2 * size, size);}
+			      break;
+		      case 3:
+			      // chunk 3
+			      {int src3 = 3;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims3(tid, nthreads, &src3, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims3.directRecv(thisOutput + 3 * size, 3 * size, size);}
+			      break;
+          default:
+            printf("Yo we should not be here\n");
+            return;
+	      }
+      } else if (myRank == 1) {
+	      switch (bid){
+		      case 0:
+	          // chunk 0
+			      {int src0 = 2;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims0(tid, nthreads, &src0, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims0.directRecv(thisOutput, 0, size);}
+			      break;
+		      case 1:
+			      // chunk 1
+			      {int dst1 = 2;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims1(tid, nthreads, &m1, &dst1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims1.directSend(thisInput, 0, size);}
+			      break;
+		      case 2:
+			      // chunk 2 
+			      {int src2 = 3;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims2(tid, nthreads, &src2, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims2.directRecv(thisOutput + 2 * size, 2 * size, size);}
+			      break;
+		      case 3:
+			      // chunk 3
+			      {int src3 = 3;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims3(tid, nthreads, &src3, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims3.directRecv(thisOutput + 3 * size, 3 * size, size);}
+			      break;
+          default:
+            printf("Yo we should not be here\n");
+            return;
+	      }
+      } else if (myRank == 2) {
+	      switch (bid){
+		      case 0:
+	          // chunk 0
+			      {int src0 = 0;
+            int dst0[2] = {1,3};
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 2, 1, FUNC>
+				      prims0(tid, nthreads, &src0, dst0, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims0.directRecvCopySend(thisOutput, 0, size);}
+			      break;
+		      case 1:
+			      // chunk 1
+			      {int src1 = 1;
+            int dst1[2] = {0,3};
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 2, 1, FUNC>
+				      prims1(tid, nthreads, &src1, dst1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims1.directRecvCopySend(thisOutput + 1 * size, 1 * size, size);}
+			      break;
+		      case 2:
+			      // chunk 2 
+			      {int dst2 = 3;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims2(tid, nthreads, &m1, &dst2, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims2.directSend(thisInput, 0, size);}
+			      break;
+		      case 3:
+			      // chunk 3
+			      {int src3 = 3;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims3(tid, nthreads, &src3, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims3.directRecv(thisOutput + 3 * size, 3 * size, size);}
+			      break;
+          default:
+            printf("Yo we should not be here\n");
+            return;
+        }
+      } else if (myRank == 3) {
+	      switch (bid){
+		      case 0:
+	          // chunk 0
+			      {int src0 = 2;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims0(tid, nthreads, &src0, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims0.directRecv(thisOutput, 0, size);}
+			      break;
+		      case 1:
+			      // chunk 1
+			      {int src1 = 2;
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+				      prims1(tid, nthreads, &src1, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims1.directRecv(thisOutput + 1 * size, 1 * size, size);}
+			      break;
+		      case 2:
+			      // chunk 2 
+            {int src2 = 2;
+			      int dst2 [2] = {0,1};
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 2, 1, FUNC>
+				      prims2(tid, nthreads, &src2, dst2, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims2.directRecvCopySend(thisOutput + 2 * size, 2 * size, size);}
+			      break;
+		      case 3:
+			      // chunk 3
+			      {int dst3 [3] = {0,1,2};
+			      ncclPrimitives<UNROLL, 1, 1, T, 1, 3, 1, FUNC>
+				      prims3(tid, nthreads, &m1, dst3, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+						prims3.directSend(thisInput, 0, size);}
+			      break;
+          default:
+            printf("Yo we should not be here\n");
+            return;
+        }
+      } else {
+        printf("Whattttt\n");
+      }
+#if 0
+      
+/*      int conn[] = { 
+      	0, 1, 2, 3, 
+      	3, 0, 1, 2, 
+       	2, 3, 0, 1, 
+       	1, 2, 3, 0, 
+      }; */
 
       int conn[] = {
-	0, 1,
-	1, 0
+      	0, 1,
+      	1, 0
       };
-      
+
       int myRank = ring->devUserRanks[0];
 
       if(nranks != 2 || (nChannels % nranks) != 0) {
-	printf("this is bad\n");
-	return;
+      	printf("this is bad\n");
+      	return;
       }
       
       // Compute pointers
@@ -54,21 +237,22 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
 
       int myNghr = conn[myRank * nranks + (bid / blocksPerLink)];
       if(myNghr == myRank) {
-	return;
+      	return;
       }
 
-      ncclPrimitives<UNROLL, ALLGATHER_CHUNKSTEPS/ALLGATHER_SLICESTEPS, ALLGATHER_SLICESTEPS, T, 1, 1, 1, FUNC>
-	prims(tid, nthreads, &myNghr, &myNghr, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+      //ncclPrimitives<UNROLL, ALLGATHER_CHUNKSTEPS/ALLGATHER_SLICESTEPS, ALLGATHER_SLICESTEPS, T, 1, 1, 0, FUNC>
+      ncclPrimitives<UNROLL, 1,1, T, 1, 1, 1, FUNC>
+      	prims(tid, nthreads, &myNghr, &myNghr, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
 
       const int blockIdWithinALink = (bid % blocksPerLink);
       for (ssize_t gridOffset = 0; gridOffset < size; gridOffset += loopSize) {
         int realChunkSize = min(chunkSize, size-gridOffset);
         ALIGN_SIZE(realChunkSize, nthreads*sizeof(uint64_t)/sizeof(T));
         ssize_t chunkOffset = gridOffset + blockIdWithinALink * realChunkSize;// + bid*realChunkSize;
-	int nelem = min(realChunkSize, size-chunkOffset);
+      	int nelem = min(realChunkSize, size-chunkOffset);
 
-	int rankDest = myRank;	
-	ssize_t offset = chunkOffset + rankDest * size; 
+      	int rankDest = myRank;
+      	ssize_t offset = chunkOffset + rankDest * size;
 
         if (thisInput + chunkOffset == thisOutput + offset) { // In place
           prims.directSend(thisInput+chunkOffset, offset, nelem);
@@ -78,13 +262,13 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
           //prims.copySend(thisInput+chunkOffset, thisOutput+offset, nelem);
         }
 
-	rankDest = myNghr;
-	offset = chunkOffset + rankDest * size;
-	prims.directRecv(thisOutput+offset, offset, nelem);
-	//prims.recv(thisOutput+offset, nelem);
-	
+      	rankDest = myNghr;
+      	offset = chunkOffset + rankDest * size;
+      	prims.directRecv(thisOutput+offset, offset, nelem);
+      	//prims.recv(thisOutput+offset, nelem);
       }
-      
+#endif
+
     }
 };
 
