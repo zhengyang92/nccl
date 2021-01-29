@@ -9,6 +9,8 @@
 
 #include "collectives.h"
 #include "devcomm.h"
+#include <stdio.h>
+
 
 
 #if __CUDA_ARCH__ >= 800
@@ -80,13 +82,12 @@ __device__ void ncclKernel(struct ncclWorkElem first)  {
   auto f = ncclFunction<FUNCTION, ALGO, PROTO, REDOP, T, UNROLL>();
 
   struct ncclDevComm* comm = first.comm;
-  struct ncclChannel* channel = comm->channels+bid;
+  struct ncclChannel* channel = comm->channels + (bid % first.coll.nChannels);
   struct ncclWorkElem* w = NULL;
   uint16_t index = first.index;
 
   /* To optimize for latency, (only) the first operation is passed as argument.*/
-  if (bid == 0 && first.funcIndex != FUNC_INDEX_P2P) w = &first;
-
+  if ((bid % first.coll.nChannels) == 0 && first.funcIndex != FUNC_INDEX_P2P) w = &first;
   while (1) {
     if (w == NULL) {
       w = shmem.localWork.elems;
@@ -103,6 +104,7 @@ __device__ void ncclKernel(struct ncclWorkElem first)  {
     if (w->active == 2) {
       return;
     }
+
     w = NULL;
   }
 }

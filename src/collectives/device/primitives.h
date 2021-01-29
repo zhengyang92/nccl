@@ -48,6 +48,7 @@ class ncclPrimitives {
   const int stepSize;
   int nrecv = 0;
   int nsend = 0;
+  int myRank;
   struct ncclConnInfo* conn = NULL;
   volatile int* connSizesFifoPtr = NULL;
   void** connPtrsFifoPtr = NULL;
@@ -160,6 +161,7 @@ class ncclPrimitives {
         }
       }
       barrier();
+
       if (SEND && (role & ROLE_POST_SEND) && realSize > 0 && index == 0) __threadfence_system();
       __syncwarp();
       if (SEND && (role & ROLE_POST_SEND)) postSend();
@@ -224,7 +226,7 @@ class ncclPrimitives {
  public:
   __device__ __forceinline__
   ncclPrimitives(const int tid, const int nworkers, int* recvPeers, int* sendPeers, T* directBuff, int stepSize, struct ncclChannel* channel, struct ncclDevComm* comm, struct ncclShmemPtrs* ptrs, int group)
-    : comm(comm), tid(tid), nworkers(nworkers), stepSize(stepSize), srcs((const T**)ptrs[group].srcs), dsts((T**)ptrs[group].dsts), group(group) {
+    : comm(comm), tid(tid), nworkers(nworkers), stepSize(stepSize), srcs((const T**)ptrs[group].srcs), dsts((T**)ptrs[group].dsts), group(group), myRank(channel->ring.devUserRanks[0]) {
     nthreads = nworkers;
     // For send operations, we need an extra warp to overlap the threadfence and the copy
     int postThreads = NSEND && nworkers >= 64 ? WARP_SIZE : 0;

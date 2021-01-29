@@ -211,6 +211,8 @@ struct ncclDevComm {
   // Flag to ask NCCL kernels to abort
   volatile uint32_t *abortFlag;
 
+  // SCKL flags to cross threadblocks
+  int* signal;
   // Channels, device side
   struct ncclChannel* channels;
 };

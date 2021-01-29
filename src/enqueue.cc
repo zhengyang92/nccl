@@ -8,6 +8,7 @@
 #include "argcheck.h"
 #include "coll_net.h"
 
+
 // Only generate inline kernels for LL
 #define NCCL_FUNC5(func, algo, redop, dtype) \
   (void*)NCCL_KERN_NAME(func, algo, LL, redop, dtype), \
@@ -138,6 +139,8 @@ static ncclResult_t setupLaunch(struct ncclComm* comm, struct cudaLaunchParams* 
   if (elem->funcIndex != FUNC_INDEX_P2P) elem->active = 0;
 
   params->func = ncclKerns[elem->funcIndex];
+  // SCKL number of blocks per channel
+  params->gridDim.x = 6;
   return ncclSuccess;
 }
 
