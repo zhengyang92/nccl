@@ -212,7 +212,7 @@ struct ncclDevComm {
   volatile uint32_t *abortFlag;
 
   // SCKL flags to cross threadblocks
-  int* signal;
+  int* signals;
   // Channels, device side
   struct ncclChannel* channels;
 };

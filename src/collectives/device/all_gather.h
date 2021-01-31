@@ -8,6 +8,9 @@
 #include "primitives.h"
 #include "collectives.h"
 #include <cassert>
+#include <cooperative_groups.h>
+namespace cg = cooperative_groups;
+
 
 template<class FUNC, typename T, int UNROLL>
 class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T, UNROLL> {
@@ -32,6 +35,7 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       // Compute pointers
       const T * __restrict__ thisInput = (const T*)args->sendbuff;
       T * __restrict__ thisOutput = (T*)args->recvbuff;
+      volatile int* signals = comm->signals;
       // if (tid == 0 && bid == 0)
       //   printf("Here\n");
       /*
@@ -76,22 +80,36 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
         0,1,2
       };
 
+      int ncclWorkIndex = args->index;
+      const int nsteps = 3;
       // step x gpu x bid
-      int schedule[1][4][6] = {
-         0,  0,  0,  1,  2,  3,
-         1,  1,  1,  0,  2,  3,
-         2,  2,  2,  0,  1,  3,
-         3,  3,  3,  0,  1,  2,
+      int schedule[nsteps][4][6] = {
+         0, -1, -1, -1, -1,  3,
+        -1,  1, -1,  0, -1, -1,
+        -1, -1,  2, -1,  1, -1,
+         3, -1, -1, -1, -1,  2,
+
+         3, -1, -1, -1, -1,  2,
+        -1,  0, -1,  3, -1, -1,
+        -1, -1,  1, -1,  0, -1,
+         2, -1, -1, -1, -1,  1,
+
+         2, -1, -1, -1, -1,  1,
+        -1,  3, -1,  2, -1, -1,
+        -1, -1,  0, -1,  3, -1,
+         1, -1, -1, -1, -1,  0,
       };
       int nghr = conn[myRank][bid % 3];
       if (bid < 3){
         ncclPrimitives<UNROLL, 1, 1, T, 0, 1, 1, FUNC>
             prims(tid, nthreads, NULL, &nghr, thisOutput, stepSize, comm->channels, comm, ncclShmem->ptrs, 0);
-        for (int step = 0; step < 1; step++){
+        for (int step = 0; step < nsteps; step++){
           int curSchedule = schedule[step][myRank][bid];
           if (curSchedule != -1){
+            if (step > 0){
+              while (*(signals+curSchedule) != ncclWorkIndex){}
+            }
             prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
-            // prims.directSend(thisInput, 0, size);
           }
         }
       } else {
@@ -100,13 +118,22 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
         int m1 = -1;
         ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
             prims(tid, nthreads, &nghr, &m1, thisOutput, stepSize, comm->channels, comm, ncclShmem->ptrs, 0);
-        for (int step = 0; step < 1; step++){
+        for (int step = 0; step < nsteps; step++){
           int curSchedule = schedule[step][myRank][bid];
           if (curSchedule != -1){
             prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
+            if (nsteps > 1 && tid == 0){
+              signals[curSchedule] = ncclWorkIndex;
+            }
           }
         }
       }
+      // cg::grid_group barrier = cg::this_grid();
+      // barrier.sync();
+      // if (tid == 0 && bid == 0){
+      //   for (int t = 0; t < 4; t++)
+      //     signals[t] = 0;
+      // }
     }
 };
 
