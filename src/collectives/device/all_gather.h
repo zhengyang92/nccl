@@ -73,6 +73,15 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
 	    //   return;
       // }
 
+      // if (bid > 0) return;
+      // ncclPrimitives<UNROLL, ALLGATHER_CHUNKSTEPS/ALLGATHER_SLICESTEPS, ALLGATHER_SLICESTEPS, T, 1, 1, 1, FUNC>
+      //   prims(tid, nthreads, &ring->prev, &ring->next, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+   	  // prims.directSend(thisOutput + myRank * size, myRank * size, size); // 0 -x-> 1 -x-> 2
+      // prims.directRecvCopySend(thisOutput + ((myRank - 1 + 4) % 4) * size, ((myRank - 1 + 4) % 4) * size, size);
+      // prims.directRecvCopySend(thisOutput + ((myRank - 2 + 4) % 4) * size, ((myRank - 2 + 4) % 4) * size, size);
+      // prims.directRecv(thisOutput + ((myRank - 3 + 4) % 4) * size, ((myRank - 3 + 4) % 4) * size, size);
+      // return;
+
       int conn[4][3] = {
         1,2,3,
         0,2,3,
