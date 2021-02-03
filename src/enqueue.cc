@@ -140,7 +140,7 @@ static ncclResult_t setupLaunch(struct ncclComm* comm, struct cudaLaunchParams* 
 
   params->func = ncclKerns[elem->funcIndex];
   // SCKL number of blocks per channel
-  params->gridDim.x = 6;
+  params->gridDim.x *= (comm->nRanks-1);
   return ncclSuccess;
 }
 
@@ -213,6 +213,16 @@ ncclResult_t ncclBarrierEnqueue(struct ncclComm* comm) {
       NCCLCHECK(ncclCpuBarrierLast(comm));
     }
   }
+
+  cudaDeviceSynchronize();
+  for (int c=0; c<comm->p2pnChannels; c++) {
+    printf("I am here\n");
+    struct ncclChannel* channel = comm->channels+c;
+    if (channel->workCount) {
+  //    channel->workFifo[(channel->workFifoTail-1)%NCCL_MAX_OPS].elems[0].active = 0;
+    }
+  }
+
   return ncclSuccess;
 }
 

@@ -43,13 +43,15 @@ static __device__ void load_parallel(void* dst, void* src, size_t size, int tid)
   int* s = (int*)src;
   for (int o = tid; o < (size/sizeof(int)); o += blockDim.x) d[o] = s[o];
 }
-static __device__ void load_coll(struct ncclWork* localWork, struct ncclWork* hostWork, int tid, struct ncclDevComm* comm) {
+static __device__ void load_coll(struct ncclWork* localWork, struct ncclWork* hostWork, int tid, struct ncclDevComm* comm, int bid, int numBlocksPerChannel) {
   __syncthreads();
   load_parallel(localWork, hostWork, sizeof(struct ncclWork), tid);
   // Check whether the last operation was aborted and make sure all threads exit
   int abort = tid == 0 ? *(comm->abortFlag) : 0;
   exitIfAbortBarrier(abort);
-  if (tid == 0) hostWork->elems[0].active = 0;
+  if (tid == 0) printf("TTT %d\n", (int) hostWork->elems[0].active);
+  if (hostWork->elems[0].active != 2)
+    if (tid == 0 && (bid % numBlocksPerChannel) == 0) hostWork->elems[0].active = 0;
 }
 
 template <ncclFunc_t FUNCTION, int ALGO, int PROTO, class REDOP, typename T, int UNROLL>
@@ -82,16 +84,21 @@ __device__ void ncclKernel(struct ncclWorkElem first)  {
   auto f = ncclFunction<FUNCTION, ALGO, PROTO, REDOP, T, UNROLL>();
 
   struct ncclDevComm* comm = first.comm;
-  struct ncclChannel* channel = comm->channels + (bid % first.coll.nChannels);
+  int numBlocksPerChannel = (gridDim.x / first.coll.nChannels);
+  struct ncclChannel* channel = comm->channels + (bid / numBlocksPerChannel);
   struct ncclWorkElem* w = NULL;
   uint16_t index = first.index;
 
   /* To optimize for latency, (only) the first operation is passed as argument.*/
-  if ((bid % first.coll.nChannels) == 0 && first.funcIndex != FUNC_INDEX_P2P) w = &first;
+//  if ((bid % (gridDim.x / first.coll.nChannels)) == 0 && first.funcIndex != FUNC_INDEX_P2P) w = &first;
+  int myRank = channel->ring.devUserRanks[0];
   while (1) {
+    if (tid == 0)
+	      printf("QQQ myRank = %d bid = %d workindex = %d active = %d | %d %d\n", myRank, bid, (int) index, 777,
+			      (int) channel->workFifo[0].elems->active, (int) channel->workFifo[1].elems->active);
     if (w == NULL) {
       w = shmem.localWork.elems;
-      load_coll(&shmem.localWork, channel->workFifo+index, tid, comm);
+      load_coll(&shmem.localWork, channel->workFifo+index, tid, comm, bid, numBlocksPerChannel);
     }
     if (tid < w->nThreads) {
       if (w->funcIndex == FINDEX) {
@@ -102,6 +109,8 @@ __device__ void ncclKernel(struct ncclWorkElem first)  {
     }
     index = (index+1) % NCCL_MAX_OPS;
     if (w->active == 2) {
+      printf("PPP myRank = %d workindex = %d active = %d | %d %d\n", myRank, (int) index, w->active,
+		      (int) channel->workFifo[0].elems->active, (int) channel->workFifo[1].elems->active);
       return;
     }
 
