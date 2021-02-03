@@ -9,7 +9,7 @@
 #include "collectives.h"
 #include <cassert>
 #include <cooperative_groups.h>
-namespace cg = cooperative_groups;
+#include "sccl_all_gather.h"
 
 
 template<class FUNC, typename T, int UNROLL>
@@ -81,7 +81,7 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       // prims.directRecvCopySend(thisOutput + ((myRank - 2 + 4) % 4) * size, ((myRank - 2 + 4) % 4) * size, size);
       // prims.directRecv(thisOutput + ((myRank - 3 + 4) % 4) * size, ((myRank - 3 + 4) % 4) * size, size);
       // return;
-
+/*
       int conn[4][3] = {
         1,2,3,
         0,2,3,
@@ -107,12 +107,13 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
         -1,  3, -1,  2, -1, -1,
         -1, -1,  0, -1,  3, -1,
          1, -1, -1, -1, -1,  0,
-      };
-      int nghr = conn[myRank][bid % 3];
-      if (bid < 3){
+      };*/
+      int ncclWorkIndex = args->index;
+      int nghr = neighbors[myRank][(bid / NCHANNELS) % NNBGRS];
+      if (bid / NCHANNELS < NNBGRS){
         ncclPrimitives<UNROLL, 1, 1, T, 0, 1, 1, FUNC>
             prims(tid, nthreads, NULL, &nghr, thisOutput, stepSize, comm->channels, comm, ncclShmem->ptrs, 0);
-        for (int step = 0; step < nsteps; step++){
+        for (int step = 0; step < NSTEPS; step++){
           int curSchedule = schedule[step][myRank][bid];
           if (curSchedule != -1){
             if (step > 0){
@@ -127,11 +128,11 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
         int m1 = -1;
         ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
             prims(tid, nthreads, &nghr, &m1, thisOutput, stepSize, comm->channels, comm, ncclShmem->ptrs, 0);
-        for (int step = 0; step < nsteps; step++){
+        for (int step = 0; step < NSTEPS; step++){
           int curSchedule = schedule[step][myRank][bid];
           if (curSchedule != -1){
             prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
-            if (nsteps > 1 && tid == 0){
+            if (NSTEPS > 1 && tid == 0){
               signals[curSchedule] = ncclWorkIndex;
             }
           }

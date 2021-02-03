@@ -4,6 +4,8 @@
  * See LICENSE.txt for license information
  ************************************************************************/
 
+#include "sccl_all_gather_host.h"
+
 #include "enqueue.h"
 #include "argcheck.h"
 #include "coll_net.h"
@@ -140,7 +142,7 @@ static ncclResult_t setupLaunch(struct ncclComm* comm, struct cudaLaunchParams* 
 
   params->func = ncclKerns[elem->funcIndex];
   // SCKL number of blocks per channel
-  params->gridDim.x = 6;
+  params->gridDim.x = NNBGRS * SIZE * 2;
   return ncclSuccess;
 }
 

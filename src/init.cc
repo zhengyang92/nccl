@@ -4,6 +4,8 @@
  * See LICENSE.txt for license information
  ************************************************************************/
 
+#include "sccl_all_gather_host.h"
+
 #include "nccl.h"
 #include "channel.h"
 #include "nvmlwrap.h"
@@ -332,12 +334,12 @@ static ncclResult_t setupChannel(struct ncclComm* comm, int channelId, int rank,
 
   // scklChannel setup
   struct scklGraph* sckl = &comm->channels[channelId].sckl;
-  for (int i=0; i<nranks; i++) {
-    sckl->in[i] = i;
-    sckl->out[i] = i;
+  for (int i=0; i<NNBGRS; i++) {
+    sckl->in[i] = neighbors[rank][i];
+    sckl->out[i] = neighbors[rank][i];
   }
-  sckl->inDeg = nranks;
-  sckl->outDeg = nranks;
+  sckl->inDeg = NNBGRS;
+  sckl->outDeg = NNBGRS;
   
   return ncclSuccess;
 }
@@ -824,7 +826,7 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, ncclUniqueId* comm
     NCCLCHECKGOTO(ncclTransportP2pConnect(comm, channel, 1, &channel->ring.prev, 1, &channel->ring.next), ret, affinity_restore);
 
     // SCKL
-    NCCLCHECKGOTO(ncclTransportP2pConnect(comm, channel, comm->nRanks, channel->sckl.in, comm->nRanks, channel->sckl.out), ret, affinity_restore);
+    NCCLCHECKGOTO(ncclTransportP2pConnect(comm, channel, NNBGRS, channel->sckl.in, NNBGRS, channel->sckl.out), ret, affinity_restore);
     //NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &ringGraph, channel, comm->nRanks, channel->sckl.in, comm->nRanks, channel->sckl.out), ret, affinity_restore);
   }
   NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &ringGraph), ret, affinity_restore);
