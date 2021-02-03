@@ -823,17 +823,14 @@ static ncclResult_t initTransportsRank(struct ncclComm* comm, ncclUniqueId* comm
     struct ncclChannel* channel = comm->channels+c;
     NCCLCHECKGOTO(setupChannel(comm, c, rank, nranks, rings+c*nranks), ret, affinity_restore);
     if (comm->nRanks == 1) continue;
-    NCCLCHECKGOTO(ncclTransportP2pConnect(comm, channel, 1, &channel->ring.prev, 1, &channel->ring.next), ret, affinity_restore);
+    //NCCLCHECKGOTO(ncclTransportP2pConnect(comm, channel, 1, &channel->ring.prev, 1, &channel->ring.next), ret, affinity_restore);
 
     // SCKL
-    NCCLCHECKGOTO(ncclTransportP2pConnect(comm, channel, NNBGRS, channel->sckl.in, NNBGRS, channel->sckl.out), ret, affinity_restore);
-    //NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &ringGraph, channel, comm->nRanks, channel->sckl.in, comm->nRanks, channel->sckl.out), ret, affinity_restore);
+    NCCLCHECKGOTO(ncclTransportP2pConnect(comm, channel, channel->sckl.inDeg, channel->sckl.in, channel->sckl.outDeg, channel->sckl.out), ret, affinity_restore);
+    //NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &ringGraph, channel, NNBGRS, channel->sckl.in, NNBGRS, channel->sckl.out), ret, affinity_restore);
   }
   NCCLCHECKGOTO(ncclTransportP2pSetup(comm, &ringGraph), ret, affinity_restore);
-  INFO(NCCL_INIT, "Connected all rings");
-
-
-  
+  INFO(NCCL_INIT, "Connected all SCKL channels");
   // Connect Trees
   for (int c=0; c<comm->nChannels; c++) {
     struct ncclChannel* channel = comm->channels+c;
