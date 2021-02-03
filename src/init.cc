@@ -271,7 +271,7 @@ static ncclResult_t devCommSetup(ncclComm_t comm) {
   NCCLCHECK(ncclCudaMemcpy(comm->hostDevComm.channels, comm->channels, comm->p2pnChannels));
 
   // Allocating SCKL flags
-  NCCLCHECK(ncclCudaCalloc(&comm->hostDevComm.signals, 32));
+  NCCLCHECK(ncclCudaCalloc(&comm->hostDevComm.signals, 64));
 
   // Copy userRanks and peers
   for (int r=0; r<comm->p2pnChannels; r++) {

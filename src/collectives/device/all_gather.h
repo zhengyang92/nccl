@@ -16,6 +16,7 @@ template<class FUNC, typename T, int UNROLL>
 class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T, UNROLL> {
   public:
     __device__ void run(struct ncclWorkElem* args) {
+      return;
       const int tid = threadIdx.x;
       const int nthreads = args->nThreads-WARP_SIZE;
       const int bid = blockIdx.x; //args->coll.bid;
@@ -23,21 +24,22 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       struct ncclDevComm* comm = args->comm;
       struct ncclChannel* channel = comm->channels;
       struct ncclRing* ring = &channel->ring;
-      const int stepSize = comm->buffSizes[NCCL_PROTO_SIMPLE] / (sizeof(T)*NCCL_STEPS);
+      const int stepSize = comm->buffSizes[NCCL_PROTO_SIMPLE] / (sizeof(T)*NCCL_STEPS) / 6;
       const int chunkSize = stepSize * 1;//ALLGATHER_CHUNKSTEPS;
       const int nranks = comm->nRanks;
       const int blocksPerLink = nChannels/nranks;
       //const ssize_t loopSize = nChannels*(ssize_t)chunkSize;
       const ssize_t loopSize = chunkSize * blocksPerLink;//comm->buffSizes[NCCL_PROTO_SIMPLE] / sizeof(T);
-      const ssize_t size = args->coll.count;
+      const ssize_t size = args->coll.count / 6;
 
       int myRank = ring->devUserRanks[0];
       // Compute pointers
       const T * __restrict__ thisInput = (const T*)args->sendbuff;
       T * __restrict__ thisOutput = (T*)args->recvbuff;
       volatile int* signals = comm->signals;
-      // if (tid == 0 && bid == 0)
-      //   printf("Here\n");
+
+      /*if (tid == 0 && bid == 0)
+         printf("%d\n", size);*/
       /*
 	 send 0 from 0 to 2 at time 0
 	 send 1 from 1 to 2 at time 0
@@ -110,15 +112,17 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       };*/
       int ncclWorkIndex = args->index;
       int nghr = neighbors[myRank][(bid / NCHANNELS) % NNBGRS];
+      if (bid % 2) return;
+
       if (bid / NCHANNELS < NNBGRS){
         ncclPrimitives<UNROLL, 1, 1, T, 0, 1, 1, FUNC>
             prims(tid, nthreads, NULL, &nghr, thisOutput, stepSize, comm->channels, comm, ncclShmem->ptrs, 0);
         for (int step = 0; step < NSTEPS; step++){
           int curSchedule = schedule[step][myRank][bid];
           if (curSchedule != -1){
-            if (step > 0){
+            /*if (step > 0){
               while (*(signals+curSchedule) != ncclWorkIndex){}
-            }
+            }*/
             prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
           }
         }
@@ -132,9 +136,9 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
           int curSchedule = schedule[step][myRank][bid];
           if (curSchedule != -1){
             prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
-            if (NSTEPS > 1 && tid == 0){
+            /*if (NSTEPS > 1 && tid == 0){
               signals[curSchedule] = ncclWorkIndex;
-            }
+            }*/
           }
         }
       }
