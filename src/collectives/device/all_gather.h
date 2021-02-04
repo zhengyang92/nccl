@@ -16,7 +16,6 @@ template<class FUNC, typename T, int UNROLL>
 class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T, UNROLL> {
   public:
     __device__ void run(struct ncclWorkElem* args) {
-      return;
       const int tid = threadIdx.x;
       const int nthreads = args->nThreads-WARP_SIZE;
       const int bid = blockIdx.x; //args->coll.bid;
