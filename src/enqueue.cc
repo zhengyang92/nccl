@@ -68,15 +68,18 @@ static void* const ncclKerns[1+NCCL_NUM_FUNCTIONS*ncclNumOps*ncclNumTypes*NCCL_N
 /*       Launch system : synchronization and CUDA kernel launch              */
 /*****************************************************************************/
 
-ncclResult_t ncclLaunchCooperativeKernelMultiDevice(struct cudaLaunchParams *paramsList, int* cudaDevs, int numDevices, int cgMode) {
+ncclResult_t ncclLaunchCooperativeKernelMultiDevice(struct cudaLaunchParams *paramsList, int* cudaDevs, int numDevices, int cgMode, int numBlocksPerChannel) {
+  for (int i = 0; i < numDevices; i++) {
+    struct cudaLaunchParams* params = paramsList+i;
+    params->gridDim.x *= numBlocksPerChannel;
+  }
 #if CUDART_VERSION >= 9000
   if (cgMode & 0x01) {
     CUDACHECK(cudaLaunchCooperativeKernelMultiDevice(paramsList, numDevices,
             // These flags are to reduce the latency of using this API
             cudaCooperativeLaunchMultiDeviceNoPreSync|cudaCooperativeLaunchMultiDeviceNoPostSync));
-    return ncclSuccess;
   }
-#endif
+#else
   int savedDev;
   CUDACHECK(cudaGetDevice(&savedDev));
   for (int i = 0; i < numDevices; i++) {
@@ -85,6 +88,11 @@ ncclResult_t ncclLaunchCooperativeKernelMultiDevice(struct cudaLaunchParams *par
     CUDACHECK(cudaLaunchKernel(params->func, params->gridDim, params->blockDim, params->args, params->sharedMem, params->stream));
   }
   CUDACHECK(cudaSetDevice(savedDev));
+#endif
+  for (int i = 0; i < numDevices; i++) {
+    struct cudaLaunchParams* params = paramsList+i;
+    params->gridDim.x /= numBlocksPerChannel;
+  }
   return ncclSuccess;
 }
 
@@ -153,8 +161,6 @@ static ncclResult_t setupLaunch(struct ncclComm* comm, struct cudaLaunchParams* 
     }
   }
   params->func = ncclKerns[elem->funcIndex];
-  // SCKL number of blocks per channel
-  params->gridDim.x *= c0->numBlocksPerChannel;
   return ncclSuccess;
 }
 
@@ -223,7 +229,7 @@ ncclResult_t ncclBarrierEnqueue(struct ncclComm* comm) {
     NCCLCHECK(ncclCpuBarrierIn(comm, &isLast));
     if (isLast) {
       // I'm the last. Launch all operations.
-      NCCLCHECK(ncclLaunchCooperativeKernelMultiDevice(comm->intraParams, comm->intraCudaDevs, comm->intraRanks, *comm->intraCGMode));
+      NCCLCHECK(ncclLaunchCooperativeKernelMultiDevice(comm->intraParams, comm->intraCudaDevs, comm->intraRanks, *comm->intraCGMode, comm->channels[0].numBlocksPerChannel));
       NCCLCHECK(ncclCpuBarrierLast(comm));
     }
   }
