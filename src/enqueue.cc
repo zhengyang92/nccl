@@ -215,14 +215,14 @@ ncclResult_t ncclBarrierEnqueue(struct ncclComm* comm) {
     }
   }
 
-  cudaDeviceSynchronize();
-  for (int c=0; c<comm->p2pnChannels; c++) {
-    printf("I am here\n");
-    struct ncclChannel* channel = comm->channels+c;
-    if (channel->workCount) {
-  //    channel->workFifo[(channel->workFifoTail-1)%NCCL_MAX_OPS].elems[0].active = 0;
-    }
-  }
+  // cudaDeviceSynchronize();
+  // for (int c=0; c<comm->p2pnChannels; c++) {
+  //   printf("I am here\n");
+  //   struct ncclChannel* channel = comm->channels+c;
+  //   if (channel->workCount) {
+  // //    channel->workFifo[(channel->workFifoTail-1)%NCCL_MAX_OPS].elems[0].active = 0;
+  //   }
+  // }
 
   return ncclSuccess;
 }
