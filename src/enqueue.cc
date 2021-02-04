@@ -142,7 +142,7 @@ static ncclResult_t setupLaunch(struct ncclComm* comm, struct cudaLaunchParams* 
 
   params->func = ncclKerns[elem->funcIndex];
   // SCKL number of blocks per channel
-  params->gridDim.x = NNBGRS * SIZE * 2;
+  params->gridDim.x = NNBGRS * 2;
   return ncclSuccess;
 }
 
