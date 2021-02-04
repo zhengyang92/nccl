@@ -149,7 +149,7 @@ static ncclResult_t setupLaunch(struct ncclComm* comm, struct cudaLaunchParams* 
   if (elem->funcIndex != FUNC_INDEX_P2P) {
     elem->active = 0;
     for (int i = 0; i < c0->numBlocksPerChannel-1; i++){
-      c0->activeBlocksPerChannel[c0Index] = 0;
+      c0->activeBlocksPerChannel[i*NCCL_MAX_OPS + c0Index] = 0;
     }
   }
   params->func = ncclKerns[elem->funcIndex];

@@ -90,6 +90,7 @@ __device__ void ncclKernel(struct ncclWorkElem first)  {
   /* To optimize for latency, (only) the first operation is passed as argument.*/
   if (bid < channel->numBlocksPerChannel && first.funcIndex != FUNC_INDEX_P2P) w = &first;
   int myRank = channel->ring.devUserRanks[0];
+  // if (bid < channel->numBlocksPerChannel && first.funcIndex != FUNC_INDEX_P2P && tid == 0) printf("TTT %d %d | %d\n", myRank, bid, w->active);
   while (1) {
     if (w == NULL) {
       w = shmem.localWork.elems;
@@ -103,8 +104,10 @@ __device__ void ncclKernel(struct ncclWorkElem first)  {
       }
     }
     int bidWithinChannel = (bid % channel->numBlocksPerChannel);
-    if (((bidWithinChannel == 0) && w->active == 2) || ((bidWithinChannel > 0) && channel->activeBlocksPerChannel[(bidWithinChannel-1) * NCCL_MAX_OPS + index] == 2)) {
-      if (tid == 0 && bidWithinChannel > 0){
+    // if (tid == 0) printf("QQQ %d %d %d | %d %d\n", myRank, bid, index, channel->numBlocksPerChannel, (int) gridDim.x);
+    if ((w == &first && w->active == 2) || ((bidWithinChannel == 0) && w->active == 2) || ((bidWithinChannel > 0) && channel->activeBlocksPerChannel[(bidWithinChannel-1) * NCCL_MAX_OPS + index] == 2)) {
+      __syncthreads();
+      if (w != &first && tid == 0 && bidWithinChannel > 0){
         channel->activeBlocksPerChannel[(bidWithinChannel-1) * NCCL_MAX_OPS + index] = 0;
       }
       return;
