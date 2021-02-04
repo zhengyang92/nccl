@@ -127,6 +127,7 @@ static ncclResult_t setupLaunch(struct ncclComm* comm, struct cudaLaunchParams* 
       e->p2p.nThreads = 0;
     }
     channel->workFifo[(channel->workFifoTail-1)%NCCL_MAX_OPS].elems[0].active = 2;
+    channel->workFifoTailDev = channel->workFifoTail;
   }
 
   // Find the first operation, choose the kernel accordingly and pass it

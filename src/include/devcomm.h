@@ -197,6 +197,7 @@ struct ncclChannel {
       struct ncclWork* workFifo;
       int workCount;
       uint64_t workFifoTail; // Only used by CPU
+      uint64_t workFifoTailDev; // Only set by CPU and used by GPU
     };
     int data[0x80];
   };

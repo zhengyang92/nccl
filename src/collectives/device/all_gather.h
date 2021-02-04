@@ -41,9 +41,7 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       int nghr = (bid % (nranks-1))+1;
       int ncclWorkIndex = args->index;
 
-      if (tid == 0){
-	      printf("myRank = %d bid = %d channelId = %d sizePerChannel = %d workindex = %d\n", myRank, bid, channelId, sizePerChannel, ncclWorkIndex);
-      }
+
       if (myRank == 0){
 	ncclPrimitives<UNROLL, 1, 1, T, 0, 1, 1, FUNC>
 	  prims(tid, nthreads, NULL, &nghr, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
