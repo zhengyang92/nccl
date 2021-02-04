@@ -11,6 +11,7 @@
 #include "align.h"
 #include <stdint.h>
 
+
 #define NCCL_NUM_FUNCTIONS 5 // SendRecv not included for now
 typedef enum { ncclFuncBroadcast, ncclFuncReduce, ncclFuncAllGather, ncclFuncReduceScatter, ncclFuncAllReduce, ncclFuncSendRecv} ncclFunc_t;
 extern const char* ncclFuncStr[NCCL_NUM_FUNCTIONS];
@@ -179,6 +180,8 @@ struct ncclWork {
 };
 static_assert(sizeof(struct ncclWorkElem) == (0x10*sizeof(int)), "ncclWorkElem must have a pow2 size");
 
+
+
 struct ncclChannel {
   union {
     struct {
@@ -197,6 +200,8 @@ struct ncclChannel {
       struct ncclWork* workFifo;
       int workCount;
       uint64_t workFifoTail; // Only used by CPU
+      int numBlocksPerChannel; // Used by SCKL
+      uint16_t* activeBlocksPerChannel;
     };
     int data[0x80];
   };
