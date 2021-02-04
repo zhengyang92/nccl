@@ -102,6 +102,11 @@ static ncclResult_t getNextOp(struct ncclChannel* channel, struct ncclWork** wor
   // Initialize with work elem if provided
   if (base) memcpy(e, base, sizeof(struct ncclWorkElem));
   e->active = 1;
+
+  // SCKL replicates active for other thread blocks
+  for (int i = 0; i < channel->numBlocksPerChannel-1; i++){
+    channel->activeBlocksPerChannel[i*NCCL_MAX_OPS + opIndex] = 1; 
+  }
   e->index = opIndex;
   channel->workFifoTail++;
   channel->workCount++;
@@ -126,22 +131,30 @@ static ncclResult_t setupLaunch(struct ncclComm* comm, struct cudaLaunchParams* 
       e->funcIndex = FUNC_INDEX_P2P;
       e->p2p.nThreads = 0;
     }
-    channel->workFifo[(channel->workFifoTail-1)%NCCL_MAX_OPS].elems[0].active = 2;
-    channel->workFifoTailDev = channel->workFifoTail;
+    int channelTailIndex = ((channel->workFifoTail-1)%NCCL_MAX_OPS);
+    channel->workFifo[channelTailIndex].elems[0].active = 2;
+    for (int i = 0; i < channel->numBlocksPerChannel-1; i++){
+      channel->activeBlocksPerChannel[i*NCCL_MAX_OPS + channelTailIndex] = 2;
+    }
   }
 
   // Find the first operation, choose the kernel accordingly and pass it
   // as the first argument.
   struct ncclChannel* c0 = comm->channels;
-  struct ncclWork* work = c0->workFifo+((c0->workFifoTail-c0->workCount)%NCCL_MAX_OPS);
+  int c0Index = ((c0->workFifoTail-c0->workCount)%NCCL_MAX_OPS);
+  struct ncclWork* work = c0->workFifo+c0Index;
   struct ncclWorkElem* elem = work->elems;
   memcpy(&comm->args, elem, sizeof(struct ncclWorkElem));
   // As we inline the first coll directly, we can free it immediately.
-  if (elem->funcIndex != FUNC_INDEX_P2P) elem->active = 0;
-
+  if (elem->funcIndex != FUNC_INDEX_P2P) {
+    elem->active = 0;
+    for (int i = 0; i < c0->numBlocksPerChannel-1; i++){
+      c0->activeBlocksPerChannel[c0Index] = 0;
+    }
+  }
   params->func = ncclKerns[elem->funcIndex];
   // SCKL number of blocks per channel
-  params->gridDim.x *= (comm->nRanks-1);
+  params->gridDim.x *= c0->numBlocksPerChannel;
   return ncclSuccess;
 }
 

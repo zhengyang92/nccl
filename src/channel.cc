@@ -7,6 +7,9 @@
 #include "channel.h"
 #include "param.h"
 
+NCCL_PARAM(NumBlocksPerChannel, "NUM_BLOCKS_PER_CHANNEL", 1);
+
+
 ncclResult_t initChannel(struct ncclComm* comm, int channelid) {
   struct ncclChannel* channel = comm->channels+channelid;
   if (channel->id != -1) return ncclSuccess;
@@ -30,6 +33,10 @@ ncclResult_t initChannel(struct ncclComm* comm, int channelid) {
 
   // Per-channel operation list.
   NCCLCHECK(ncclCudaHostCalloc(&channel->workFifo, NCCL_MAX_OPS));
+
+  channel->numBlocksPerChannel = ncclParamNumBlocksPerChannel();
+  NCCLCHECK(ncclCudaHostCalloc(&channel->activeBlocksPerChannel, (channel->numBlocksPerChannel-1)*NCCL_MAX_OPS));
+ 
   return ncclSuccess;
 }
 
