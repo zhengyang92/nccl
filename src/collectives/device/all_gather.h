@@ -21,35 +21,42 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       const int nChannels = args->coll.nChannels;
       struct ncclDevComm* comm = args->comm;
       const int nranks = comm->nRanks;
-      int channelId = bid / (nranks-1);
+      int channelId = bid % 2;
       struct ncclChannel* channel = comm->channels + channelId;
-      struct ncclRing* ring = &channel->ring;
       const int stepSize = comm->buffSizes[NCCL_PROTO_SIMPLE] / (sizeof(T)*NCCL_STEPS) / 6;
       const int chunkSize = stepSize * 1;//ALLGATHER_CHUNKSTEPS;
       const int blocksPerLink = nChannels/nranks;
-      //const ssize_t loopSize = nChannels*(ssize_t)chunkSize;
-      const ssize_t loopSize = chunkSize * blocksPerLink;//comm->buffSizes[NCCL_PROTO_SIMPLE] / sizeof(T);
-      const ssize_t size = args->coll.count / 6;
-
+      //const ssize_t size = args->coll.count / 6;
+      const ssize_t size = 2;
+      struct ncclRing* ring = &channel->ring;
       int myRank = ring->devUserRanks[0];
       // Compute pointers
       const T * __restrict__ thisInput = (const T*)args->sendbuff;
       T * __restrict__ thisOutput = (T*)args->recvbuff;
-      int sizePerChannel = size/nChannels;
-      int nghr = neighbors[myRank][(bid / NCHANNELS) % NNBGRS];
       int ncclWorkIndex = args->index;
 
-
-      if (myRank == 0){
+      if ((bid / NCHANNELS) < NNBGRS){
+        int nghr = neighbors[myRank][(bid / NCHANNELS) % NNBGRS];
         ncclPrimitives<UNROLL, 1, 1, T, 0, 1, 1, FUNC>
-        prims(tid, nthreads, NULL, &nghr, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
-        prims.directSend(thisOutput + channelId * sizePerChannel, channelId * sizePerChannel, sizePerChannel);
-      } else if (nghr == myRank) {
+          prims(tid, nthreads, &nghr, &nghr, thisOutput, stepSize, comm->channels, comm, ncclShmem->ptrs, 0);
+        /*for (int step = 0; step < NSTEPS; step++){
+          int curSchedule = schedule[step][myRank][bid];
+          if (curSchedule != -1){
+            //prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
+          }
+        }*/
+      } else {
         int nghr = 0;
         int m1 = -1;
-        ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
-            prims(tid, nthreads, &nghr, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
-        prims.directRecv(thisOutput + channelId * sizePerChannel, channelId * sizePerChannel, sizePerChannel);
+        /*ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+            prims(tid, nthreads, &nghr, &m1, thisOutput, stepSize, comm->channels, comm, ncclShmem->ptrs, 0);*/
+        /*for (int step = 0; step < NSTEPS; step++){
+          int curSchedule = schedule[step][myRank][bid];
+          if (curSchedule != -1){
+            //prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
+          }
+        }*/
+      
       }
     }
 };
