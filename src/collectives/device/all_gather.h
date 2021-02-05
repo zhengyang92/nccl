@@ -21,7 +21,7 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       const int nChannels = args->coll.nChannels;
       struct ncclDevComm* comm = args->comm;
       const int nranks = comm->nRanks;
-      int channelId = bid % 2;
+      int channelId = 0; //bid % 2;
       struct ncclChannel* channel = comm->channels + channelId;
       const int stepSize = comm->buffSizes[NCCL_PROTO_SIMPLE] / (sizeof(T)*NCCL_STEPS) / 6;
       const int chunkSize = stepSize * 1;//ALLGATHER_CHUNKSTEPS;
@@ -34,28 +34,35 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       const T * __restrict__ thisInput = (const T*)args->sendbuff;
       T * __restrict__ thisOutput = (T*)args->recvbuff;
       int ncclWorkIndex = args->index;
-
-      if ((bid / NCHANNELS) < NNBGRS){
-        int nghr = neighbors[myRank][(bid / NCHANNELS) % NNBGRS];
+      int nghr = neighbors[myRank][bid % 4];
+      if (tid == 0) printf ("rank %d, bid %d \n", myRank, bid);
+      if (bid < NNBGRS){
         ncclPrimitives<UNROLL, 1, 1, T, 0, 1, 1, FUNC>
-          prims(tid, nthreads, &nghr, &nghr, thisOutput, stepSize, comm->channels, comm, ncclShmem->ptrs, 0);
-        /*for (int step = 0; step < NSTEPS; step++){
-          int curSchedule = schedule[step][myRank][bid];
+          prims(tid, nthreads, NULL, &nghr, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+        for (int step = 0; step < 1; step++){
+          int curSchedule = schedule[step][myRank][bid * 2];
           if (curSchedule != -1){
-            //prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
+            prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
           }
-        }*/
+          curSchedule = schedule[step][myRank][bid * 2 + 1];
+          if (curSchedule != -1){
+            prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
+          }
+        }
       } else {
-        int nghr = 0;
         int m1 = -1;
-        /*ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
-            prims(tid, nthreads, &nghr, &m1, thisOutput, stepSize, comm->channels, comm, ncclShmem->ptrs, 0);*/
-        /*for (int step = 0; step < NSTEPS; step++){
+        ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
+            prims(tid, nthreads, &nghr, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
+        for (int step = 0; step < 1; step++){
           int curSchedule = schedule[step][myRank][bid];
           if (curSchedule != -1){
-            //prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
+            prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
           }
-        }*/
+          curSchedule = schedule[step][myRank][bid * 2 + 1];
+          if (curSchedule != -1){
+            prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
+          }
+        }
       
       }
     }

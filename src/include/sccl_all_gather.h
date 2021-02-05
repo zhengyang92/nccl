@@ -1,7 +1,7 @@
 #pragma once
 static const char SIZE = 8;
 static const char NSTEPS = 7;
-static const char NCHANNELS = 2;
+static const char NCHANNELS = 1;
 static const char NNBGRS = 4;
 __constant__ static char neighbors[SIZE][NNBGRS] = {
 1, 2, 3, 5,
@@ -13,7 +13,7 @@ __constant__ static char neighbors[SIZE][NNBGRS] = {
 2, 4, 5, 7,
 2, 3, 4, 6
 };
-__constant__ static char schedule[NSTEPS][SIZE][NNBGRS * NCHANNELS * 2] = {
+__constant__ static char schedule[NSTEPS][SIZE][NNBGRS * 2 * 2] = {
    0,  -1,   3,   4,   1,   4,   2,  -1,  10,  -1,  16,  17,  19,  21,  34,  -1,
   10,  -1,   7,  11,   8,  -1,   6,   9,   0,  -1,  19,  23,  26,  -1,  31,  32,
   16,  17,  14,  -1,  17,  -1,  13,  16,   3,   4,  29,  -1,  37,  -1,  43,  47,

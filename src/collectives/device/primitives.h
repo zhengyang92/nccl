@@ -257,8 +257,8 @@ class ncclPrimitives {
       if (index < nsend) role |= ROLE_POST_SEND;
     }
 
-    //if (role & (ROLE_WAIT_RECV|ROLE_POST_RECV)) peer = recvPeers[index];
-    //if (role & (ROLE_WAIT_SEND|ROLE_POST_SEND)) peer = sendPeers[index];
+    if (role & (ROLE_WAIT_RECV|ROLE_POST_RECV)) peer = recvPeers[index];
+    if (role & (ROLE_WAIT_SEND|ROLE_POST_SEND)) peer = sendPeers[index];
 
     loadRecvConn(channel, directBuff);
     loadSendConn(channel);

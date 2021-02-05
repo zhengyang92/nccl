@@ -1,8 +1,9 @@
 #pragma once
 static const char SIZE = 8;
 static const char NSTEPS = 7;
-static const char NCHANNELS = 2;
+static const char NCHANNELS = 1;
 static const char NNBGRS = 4;
+
  static char neighbors[SIZE][NNBGRS] = {
 1, 2, 3, 5,
 0, 3, 4, 5,
@@ -13,7 +14,8 @@ static const char NNBGRS = 4;
 2, 4, 5, 7,
 2, 3, 4, 6
 };
- static char schedule[NSTEPS][SIZE][NNBGRS * NCHANNELS * 2] = {
+#if 0
+ static char schedule[NSTEPS][SIZE][NNBGRS * 2 * 2] = {
    0,  -1,   3,   4,   1,   4,   2,  -1,  10,  -1,  16,  17,  19,  21,  34,  -1,
   10,  -1,   7,  11,   8,  -1,   6,   9,   0,  -1,  19,  23,  26,  -1,  31,  32,
   16,  17,  14,  -1,  17,  -1,  13,  16,   3,   4,  29,  -1,  37,  -1,  43,  47,
@@ -71,3 +73,4 @@ static const char NNBGRS = 4;
   40,  -1,   9,  11,   3,  20,  11,  -1,  24,  -1,  12,  22,  15,  42,  44,  -1,
   35,  36,  27,  -1,   6,  13,  44,  -1,   0,  33,  30,  -1,   1,  10,  11,  -1,
 };
+#endif

@@ -104,6 +104,10 @@ __device__ void ncclKernel(struct ncclWorkElem first)  {
       }
     }
     int bidWithinChannel = (bid % channel->numBlocksPerChannel);
+      index = (index+1) % NCCL_MAX_OPS;
+     if (w->active == 2) {
+       return;
+     }
     // if (tid == 0) printf("QQQ %d %d %d | %d %d\n", myRank, bid, index, channel->numBlocksPerChannel, (int) gridDim.x);
     if ((w == &first && w->active == 2) || ((bidWithinChannel == 0) && w->active == 2) || ((bidWithinChannel > 0) && channel->activeBlocksPerChannel[(bidWithinChannel-1) * NCCL_MAX_OPS + index] == 2)) {
       __syncthreads();
