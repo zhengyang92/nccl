@@ -36,39 +36,57 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       int ncclWorkIndex = args->index;
       int nghr = neighbors[myRank][bid % 4];
       int sid = bid % NNBGRS;
+      volatile int* signals = comm->signals;
       if (bid < NNBGRS){
         ncclPrimitives<UNROLL, 1, 1, T, 0, 1, 1, FUNC>
           prims(tid, nthreads, NULL, &nghr, thisOutput, 1, channel, comm, ncclShmem->ptrs, 0);
 
         for (int step = 0; step < NSTEPS; step++){
-          int curSchedule = schedule[step][myRank][sid * 2];
-          if (curSchedule != -1){
+          int curSchedule1 = schedule[step][myRank][sid * 2];
+          int curSchedule2 = schedule[step][myRank][sid * 2 + 1];
+          if (curSchedule1 != -1){
+            if (curSchedule1 >= (myRank + 1) * 6 || curSchedule1 < myRank * 6)
+              while (signals[curSchedule1] != 1) {}
+          }
+          if (curSchedule2 != -1){
+            if (curSchedule2 >= (myRank + 1) * 6 || curSchedule2 < myRank * 6)
+              while (signals[curSchedule2] != 1) {}
+          }
+
+          if (curSchedule1 != -1){
             //if (tid ==0)
               //printf("step %d, send from rank %d to dst %d chunk %d \n",  step, myRank, nghr, curSchedule);
-            prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
+            prims.directSend(thisOutput + curSchedule1 * size, curSchedule1 * size, size);
           }
-          curSchedule = schedule[step][myRank][sid * 2 + 1];
-          if (curSchedule != -1){
-            prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
+          if (curSchedule2 != -1){
+            prims.directSend(thisOutput + curSchedule2 * size, curSchedule2 * size, size);
           }
+          __syncthreads();
+          __threadfence_system();
         }
       } else {
         int m1 = -1;
         ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
             prims(tid, nthreads, &nghr, &m1, thisOutput, 1, channel, comm, ncclShmem->ptrs, 0);
         for (int step = 0; step < NSTEPS; step++){
-          int curSchedule = schedule[step][myRank][sid * 2];
-          if (curSchedule != -1){
-            //if (tid ==0)
-              //printf("step %d, recv from rank %d to dst %d chunk %d \n",  step, myRank, nghr, curSchedule);
-            prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
+          int curSchedule1 = schedule[step][myRank][sid * 2];
+          int curSchedule2 = schedule[step][myRank][sid * 2 + 1];
+          if (curSchedule1 != -1){
+            prims.directRecv(thisOutput + curSchedule1 * size, curSchedule1 * size, size);
           }
-          curSchedule = schedule[step][myRank][sid * 2 + 1];
-          if (curSchedule != -1){
-            prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
+          if (curSchedule2 != -1){
+            prims.directRecv(thisOutput + curSchedule2 * size, curSchedule2 * size, size);
+          }
+
+          if (tid == 0){
+            if (curSchedule1 != -1){
+              signals[curSchedule1] = 1;
+            }
+            if (curSchedule2 != -1){
+              signals[curSchedule2] = 1;
+            }
           }
         }
-      
       }
     }
 };
