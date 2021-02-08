@@ -26,8 +26,7 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       const int stepSize = comm->buffSizes[NCCL_PROTO_SIMPLE] / (sizeof(T)*NCCL_STEPS) / 6;
       const int chunkSize = stepSize * 1;//ALLGATHER_CHUNKSTEPS;
       const int blocksPerLink = nChannels/nranks;
-      //const ssize_t size = args->coll.count / 6;
-      const ssize_t size = 2;
+      const ssize_t size = args->coll.count / 6;
       struct ncclRing* ring = &channel->ring;
       int myRank = ring->devUserRanks[0];
       // Compute pointers
@@ -35,16 +34,19 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
       T * __restrict__ thisOutput = (T*)args->recvbuff;
       int ncclWorkIndex = args->index;
       int nghr = neighbors[myRank][bid % 4];
-      if (tid == 0) printf ("rank %d, bid %d \n", myRank, bid);
+      int sid = bid % NNBGRS;
       if (bid < NNBGRS){
         ncclPrimitives<UNROLL, 1, 1, T, 0, 1, 1, FUNC>
           prims(tid, nthreads, NULL, &nghr, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
-        for (int step = 0; step < 1; step++){
-          int curSchedule = schedule[step][myRank][bid * 2];
+
+        for (int step = 0; step < NSTEPS; step++){
+          int curSchedule = schedule[step][myRank][sid * 2];
           if (curSchedule != -1){
+            if (tid ==0)
+              printf("step %d, send from rank %d to dst %d chunk %d \n",  step, myRank, nghr, curSchedule);
             prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
           }
-          curSchedule = schedule[step][myRank][bid * 2 + 1];
+          curSchedule = schedule[step][myRank][sid * 2 + 1];
           if (curSchedule != -1){
             prims.directSend(thisOutput + curSchedule * size, curSchedule * size, size);
           }
@@ -53,12 +55,14 @@ class ncclFunction<ncclFuncAllGather, NCCL_ALGO_RING, NCCL_PROTO_SIMPLE, FUNC, T
         int m1 = -1;
         ncclPrimitives<UNROLL, 1, 1, T, 1, 1, 1, FUNC>
             prims(tid, nthreads, &nghr, &m1, thisOutput, stepSize, channel, comm, ncclShmem->ptrs, 0);
-        for (int step = 0; step < 1; step++){
-          int curSchedule = schedule[step][myRank][bid];
+        for (int step = 0; step < NSTEPS; step++){
+          int curSchedule = schedule[step][myRank][sid * 2];
           if (curSchedule != -1){
+            if (tid ==0)
+              printf("step %d, recv from rank %d to dst %d chunk %d \n",  step, myRank, nghr, curSchedule);
             prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
           }
-          curSchedule = schedule[step][myRank][bid * 2 + 1];
+          curSchedule = schedule[step][myRank][sid * 2 + 1];
           if (curSchedule != -1){
             prims.directRecv(thisOutput + curSchedule * size, curSchedule * size, size);
           }
